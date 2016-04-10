@@ -7,7 +7,7 @@ import santanderenv as senv
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 from sklearn.cross_validation import train_test_split
-from sklearn.preprocessing import StandardScaler
+import sklearn.preprocessing as pps
 from sklearn.datasets import make_moons, make_circles, make_classification
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
@@ -20,10 +20,9 @@ import sklearn.metrics as metrics
 from sklearn import cross_validation
 import scipy as sp
 from datetime import datetime
+from sklearn.neural_network import BernoulliRBM
 import featsprep as fp
-from skflow import TensorFlowClassifier
 
-skflow.TensorFlowDNNClassifier()
 
 
 def dump_to_file(filename, ids, targets):
@@ -97,26 +96,43 @@ train_len = train_all.shape[0]
 
 
 # preprocess dataset, split into training and test part
-all_feats = StandardScaler().fit_transform(np.concatenate((train_all[:, :-1], test_all)))
 preserved_indices = find_all(headers, preserved_feats)
-X_train = all_feats[:train_len, preserved_indices]
-X_test = all_feats[train_len:, preserved_indices]
-fp.review_data(np.concatenate((X_train, X_test)))
+all_feats = pps.MinMaxScaler().fit_transform(np.concatenate((train_all[:, 1:-1], test_all[:, 1:])))
+X_train = all_feats[:train_len, :]
+X_test = all_feats[train_len:, :]
+X_train_preserved = all_feats[:train_len, preserved_indices]
+X_test_preserved = all_feats[train_len:, preserved_indices]
+#fp.review_data(np.concatenate((X_train, X_test)))
 y_train = train_all[:, -1]
-
-
 # y_test = test_all[:, -1]
 
 # permutate
 rs = np.random.RandomState(0)
 train_permut = rs.permutation(X_train.shape[0])
-test_permut = rs.permutation(X_test.shape[0])
+#test_permut = rs.permutation(X_test.shape[0])
 X_train = X_train[train_permut, :]
+X_train_preserved = X_train_preserved[train_permut, :]
 y_train = y_train[train_permut]
+
 
 # X_test = X_test[test_permut, :]
 # y_test = y_test[test_permut]
 
+
+# rbm learning
+# TODO: try to search better parametrs with grid search
+rbm = BernoulliRBM(random_state=0, verbose=True)
+rbm.learning_rate = 0.1
+rbm.n_iter = 30
+rbm.n_components = 16
+
+print X_train
+print X_train.shape
+rbm.fit(all_feats)
+X_train = np.concatenate((rbm.transform(X_train), X_train_preserved), 1)
+X_test = np.concatenate((rbm.transform(X_test), X_test_preserved), 1)
+print X_train
+print X_train.shape
 
 
 ens_lbls = []
@@ -129,8 +145,8 @@ for name, clf in zip(names, classifiers):
     probs = clf.predict_proba(X_test)[:, [1]]
     dump_to_file(name+"_res_probs", ids, probs)
 
-    # scores = cross_validation.cross_val_score(clf, X_train, y_train, cv=5)
-    # print name, scores.tolist(), np.mean(scores)
+    scores = cross_validation.cross_val_score(clf, X_train, y_train, cv=5)
+    print name, scores.tolist(), np.mean(scores)
 
 
     # lbls = clf.predict(X_test)
